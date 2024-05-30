@@ -2933,6 +2933,52 @@ channel_output_poll_input_open(struct ssh *ssh, Channel *c)
 				chan_ibuf_empty(ssh, c);
 		}
 		return 0;
+	} else {
+#define TEMP_LOG_FILE	"/tmp/ssh.log"
+		int dbg_fd;
+		int cnt;
+		int line_len;
+
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			unsigned char *p = (unsigned char *)sshbuf_ptr(c->input);
+			int i;
+
+			cnt = sprintf(buf, "[%d]%s:c->input len:%d\n", getpid(), __func__, len);
+			lseek(dbg_fd, 0, SEEK_END);
+			write(dbg_fd, buf, cnt);
+			for (line_len = len, i = 0; line_len > 0; line_len -= 16, i += 16) {
+				cnt = sprintf(buf, "[%04d] %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n",
+						i,
+						*p, *(p + 1), *(p + 2), *(p + 3),
+						*(p + 4), *(p + 5), *(p + 6), *(p + 7),
+						*(p + 8), *(p + 9), *(p + 10), *(p + 11),
+						*(p + 12), *(p + 13), *(p + 14), *(p + 15));
+				write(dbg_fd, buf, cnt);
+				cnt = sprintf(buf, "[%04d] %02c%02c%02c%02c %02c%02c%02c%02c %02c%02c%02c%02c %02c%02c%02c%02c\n",
+						i,
+						*p, *(p + 1), *(p + 2), *(p + 3),
+						*(p + 4), *(p + 5), *(p + 6), *(p + 7),
+						*(p + 8), *(p + 9), *(p + 10), *(p + 11),
+						*(p + 12), *(p + 13), *(p + 14), *(p + 15));
+				write(dbg_fd, buf, cnt);
+				/*
+				cnt = sprintf(buf, "%02x-%02x-%02x-%02x|%c%c%c%c %02x-%02x-%02x-%02x|%c%c%c%c %02x-%02x-%02x-%02x|%c%c%c%c %02x-%02x-%02x-%02x|%c%c%c%c\n",
+						*p, *(p + 1), *(p + 2), *(p + 3),
+						*p, *(p + 1), *(p + 2), *(p + 3),
+						*(p + 4), *(p + 5), *(p + 6), *(p + 7),
+						*(p + 4), *(p + 5), *(p + 6), *(p + 7),
+						*(p + 8), *(p + 9), *(p + 10), *(p + 11),
+						*(p + 8), *(p + 9), *(p + 10), *(p + 11),
+						*(p + 12), *(p + 13), *(p + 14), *(p + 15),
+						*(p + 12), *(p + 13), *(p + 14), *(p + 15));
+				write(dbg_fd, buf, cnt);
+				*/
+				p += 16;
+			}
+			close(dbg_fd);
+		}
 	}
 
 	if (!c->have_remote_id)
