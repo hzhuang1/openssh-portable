@@ -545,6 +545,39 @@ status_to_message(u_int32_t status)
 	return (status_messages[MINIMUM(status,SSH2_FX_MAX)]);
 }
 
+#define TEMP_LOG_FILE	"/tmp/ssh.log"
+void dbg_print_msg(char *msg)
+{
+	int dbg_fd;
+	int cnt;
+
+	dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+	if (dbg_fd > 0) {
+		char buf[128];
+
+		cnt = sprintf(buf, "%s", msg);
+		lseek(dbg_fd, 0, SEEK_END);
+		write(dbg_fd, buf, cnt);
+		close(dbg_fd);
+	}
+}
+
+void dbg_print_num(int num)
+{
+	int dbg_fd;
+	int cnt;
+
+	dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+	if (dbg_fd > 0) {
+		char buf[128];
+
+		cnt = sprintf(buf, "%d", num);
+		lseek(dbg_fd, 0, SEEK_END);
+		write(dbg_fd, buf, cnt);
+		close(dbg_fd);
+	}
+}
+
 static void
 send_status_errmsg(u_int32_t id, u_int32_t status, const char *errmsg)
 {
@@ -552,6 +585,17 @@ send_status_errmsg(u_int32_t id, u_int32_t status, const char *errmsg)
 	int r;
 
 	debug3("request %u: sent status %u", id, status);
+	{
+		char msg[128];
+		if (errmsg) {
+			sprintf(msg, "request %u: sent status %u, errmsg(%s)\n",
+				id, status, errmsg);
+		} else {
+			sprintf(msg, "request %u: sent status %u\n",
+				id, status);
+		}
+		dbg_print_msg(msg);
+	}
 	if (log_level > SYSLOG_LEVEL_VERBOSE ||
 	    (status != SSH2_FX_OK && status != SSH2_FX_EOF))
 		logit("sent status %s", status_to_message(status));
@@ -597,6 +641,11 @@ static void
 send_data(u_int32_t id, const u_char *data, int dlen)
 {
 	debug("request %u: sent data len %d", id, dlen);
+	{
+		char msg[128];
+		sprintf(msg, "request %u: sent data len %d\n", id, dlen);
+		dbg_print_msg(msg);
+	}
 	send_data_or_handle(SSH2_FXP_DATA, id, data, dlen);
 }
 
@@ -608,6 +657,11 @@ send_handle(u_int32_t id, int handle)
 
 	handle_to_string(handle, &string, &hlen);
 	debug("request %u: sent handle %d", id, handle);
+	{
+		char msg[128];
+		sprintf(msg, "request %u: sent handle %d\n", id, handle);
+		dbg_print_msg(msg);
+	}
 	send_data_or_handle(SSH2_FXP_HANDLE, id, string, hlen);
 	free(string);
 }
@@ -625,6 +679,11 @@ send_names(u_int32_t id, int count, const Stat *stats)
 	    (r = sshbuf_put_u32(msg, count)) != 0)
 		fatal_fr(r, "compose");
 	debug("request %u: sent names count %d", id, count);
+	{
+		char msg[128];
+		sprintf(msg, "request %u: sent names count %d\n", id, count);
+		dbg_print_msg(msg);
+	}
 	for (i = 0; i < count; i++) {
 		if ((r = sshbuf_put_cstring(msg, stats[i].name)) != 0 ||
 		    (r = sshbuf_put_cstring(msg, stats[i].long_name)) != 0 ||
@@ -642,6 +701,11 @@ send_attrib(u_int32_t id, const Attrib *a)
 	int r;
 
 	debug("request %u: sent attrib have 0x%x", id, a->flags);
+	{
+		char msg[128];
+		sprintf(msg, "request %u: sent attrib have 0x%x\n", id, a->flags);
+		dbg_print_msg(msg);
+	}
 	if ((msg = sshbuf_new()) == NULL)
 		fatal_f("sshbuf_new failed");
 	if ((r = sshbuf_put_u8(msg, SSH2_FXP_ATTRS)) != 0 ||
