@@ -545,6 +545,7 @@ status_to_message(u_int32_t status)
 	return (status_messages[MINIMUM(status,SSH2_FX_MAX)]);
 }
 
+#define SEND_PATH
 #define TEMP_LOG_FILE	"/tmp/ssh.log"
 void dbg_print_msg(char *msg)
 {
@@ -620,6 +621,32 @@ send_status(u_int32_t id, u_int32_t status)
 {
 	send_status_errmsg(id, status, NULL);
 }
+
+#ifdef SEND_PATH
+static void
+send_data_and_path(u_int32_t id, const u_char *data, int dlen,
+		const u_char *path, int plen)
+{
+	struct sshbuf *msg;
+	int r;
+
+	debug3("request %u: sent path %s", id, path);
+	{
+		char msg[128];
+		sprintf(msg, "request %u: sent path %s\n", id, path);
+		dbg_print_msg(msg);
+	}
+	if ((msg = sshbuf_new()) == NULL)
+		fatal_f("sshbuf_new failed");
+	if ((r = sshbuf_put_u8(msg, SSH2_FXP_EXTENDED)) != 0 ||
+	    (r = sshbuf_put_u32(msg, id)) != 0 ||
+	    (r = sshbuf_put_string(msg, data, dlen)) != 0 ||
+	    (r = sshbuf_put_string(msg, path, plen)) != 0)
+		fatal_fr(r, "compose");
+	send_msg(msg);
+	sshbuf_free(msg);
+}
+#endif
 
 static void
 send_data_or_handle(char type, u_int32_t id, const u_char *data, int dlen)
@@ -859,6 +886,73 @@ process_close(u_int32_t id)
 	send_status(id, status);
 }
 
+#ifdef SEND_PATH
+static void
+process_read(u_int32_t id)
+{
+	static u_char *buf, *path;
+	static size_t buflen;
+	u_int32_t len, plen;
+	int r, handle, fd, ret, status = SSH2_FX_FAILURE;
+	u_int64_t off;
+
+	if ((r = get_handle(iqueue, &handle)) != 0 ||
+	    (r = sshbuf_get_u64(iqueue, &off)) != 0 ||
+	    (r = sshbuf_get_u32(iqueue, &len)) != 0)
+		fatal_fr(r, "parse");
+
+	debug("request %u: read \"%s\" (handle %d) off %llu len %u",
+	    id, handle_to_name(handle), handle, (unsigned long long)off, len);
+	{
+		char msg[128];
+		sprintf(msg, "%s: handle:%d, fd:%d\n", __func__, handle, handle_to_fd(handle));
+		dbg_print_msg(msg);
+	}
+	if ((fd = handle_to_fd(handle)) == -1)
+		goto out;
+	if (len > SFTP_MAX_READ_LENGTH) {
+		debug2("read change len %u to %u", len, SFTP_MAX_READ_LENGTH);
+		len = SFTP_MAX_READ_LENGTH;
+	}
+	if (len > buflen) {
+		debug3_f("allocate %zu => %u", buflen, len);
+		if ((buf = realloc(buf, len)) == NULL)
+			fatal_f("realloc failed");
+		buflen = len;
+	}
+	if (lseek(fd, off, SEEK_SET) == -1) {
+		status = errno_to_portable(errno);
+		error_f("seek \"%.100s\": %s", handle_to_name(handle),
+		    strerror(errno));
+		goto out;
+	}
+	if (len == 0) {
+		/* weird, but not strictly disallowed */
+		ret = 0;
+	} else if ((ret = read(fd, buf, len)) == -1) {
+		status = errno_to_portable(errno);
+		error_f("read \"%.100s\": %s", handle_to_name(handle),
+		    strerror(errno));
+		goto out;
+	} else if (ret == 0) {
+		status = SSH2_FX_EOF;
+		goto out;
+	}
+	/* add file path */
+	plen = strlen(handle_to_name(handle));
+	if ((path = realloc(path, plen)) == NULL)
+		fatal_f("realloc failed");
+	strcpy(path, handle_to_name(handle));
+	send_data_and_path(id, buf, ret, path, plen);
+	handle_update_read(handle, ret + plen);
+	/* success */
+	status = SSH2_FX_OK;
+	free(path);
+ out:
+	if (status != SSH2_FX_OK)
+		send_status(id, status);
+}
+#else
 static void
 process_read(u_int32_t id)
 {
@@ -875,6 +969,11 @@ process_read(u_int32_t id)
 
 	debug("request %u: read \"%s\" (handle %d) off %llu len %u",
 	    id, handle_to_name(handle), handle, (unsigned long long)off, len);
+	{
+		char msg[128];
+		sprintf(msg, "%s: handle:%d, fd:%d\n", __func__, handle, handle_to_fd(handle));
+		dbg_print_msg(msg);
+	}
 	if ((fd = handle_to_fd(handle)) == -1)
 		goto out;
 	if (len > SFTP_MAX_READ_LENGTH) {
@@ -913,6 +1012,7 @@ process_read(u_int32_t id)
 	if (status != SSH2_FX_OK)
 		send_status(id, status);
 }
+#endif
 
 static void
 process_write(u_int32_t id)
