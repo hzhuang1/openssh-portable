@@ -104,6 +104,8 @@
 /* Maximum number of fake X11 displays to try. */
 #define MAX_DISPLAYS  1000
 
+#define TEMP_LOG_FILE	"/tmp/ssh.log"
+
 /* Per-channel callback for pre/post IO actions */
 typedef void chan_fn(struct ssh *, Channel *c);
 
@@ -2905,6 +2907,28 @@ channel_after_poll(struct ssh *ssh, struct pollfd *pfd, u_int npfd)
 	channel_handler(ssh, CHAN_POST, NULL);
 }
 
+void dbg_print_msg_fd(char *msg, int fd)
+{
+	int cnt;
+	int dbg_fd;
+
+	if (fd == 0)
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+	else
+		dbg_fd = fd;
+	if (dbg_fd > 0) {
+		char buf[128];
+
+		cnt = sprintf(buf, "%s", msg);
+		lseek(dbg_fd, 0, SEEK_END);
+		write(dbg_fd, buf, cnt);
+		if (fd > 0)
+			close(dbg_fd);
+	}
+}
+
+#define CHAR(a)	isprint(a) ? (a) : ' '
+
 /*
  * Enqueue data for channels with open or draining c->input.
  * Returns non-zero if a packet was enqueued.
@@ -2934,7 +2958,6 @@ channel_output_poll_input_open(struct ssh *ssh, Channel *c)
 		}
 		return 0;
 	} else {
-#define TEMP_LOG_FILE	"/tmp/ssh.log"
 		int dbg_fd;
 		int cnt;
 		int line_len;
@@ -2944,8 +2967,14 @@ channel_output_poll_input_open(struct ssh *ssh, Channel *c)
 			char buf[128];
 			unsigned char *p = (unsigned char *)sshbuf_ptr(c->input);
 			int i;
+			int handle;
 
 			cnt = sprintf(buf, "[%d]%s:c->input len:%d\n", getpid(), __func__, len);
+			if (cnt > 260) {
+				char msg[128];
+				sprintf(msg, "%s: handle:%d, fd:%d\n", __func__, handle, handle_to_fd(handle));
+				dbg_print_msg_fd(msg, dbg_fd);
+			}
 			lseek(dbg_fd, 0, SEEK_END);
 			write(dbg_fd, buf, cnt);
 			for (line_len = len, i = 0; line_len > 0; line_len -= 16, i += 16) {
@@ -2956,12 +2985,12 @@ channel_output_poll_input_open(struct ssh *ssh, Channel *c)
 						*(p + 8), *(p + 9), *(p + 10), *(p + 11),
 						*(p + 12), *(p + 13), *(p + 14), *(p + 15));
 				write(dbg_fd, buf, cnt);
-				cnt = sprintf(buf, "[%04d] %02c%02c%02c%02c %02c%02c%02c%02c %02c%02c%02c%02c %02c%02c%02c%02c\n",
+				cnt = sprintf(buf, "[%04d]  %c %c %c %c  %c %c %c %c  %c %c %c %c  %c %c %c %c\n",
 						i,
-						*p, *(p + 1), *(p + 2), *(p + 3),
-						*(p + 4), *(p + 5), *(p + 6), *(p + 7),
-						*(p + 8), *(p + 9), *(p + 10), *(p + 11),
-						*(p + 12), *(p + 13), *(p + 14), *(p + 15));
+						CHAR(*p), CHAR(*(p + 1)), CHAR(*(p + 2)), CHAR(*(p + 3)),
+						CHAR(*(p + 4)), CHAR(*(p + 5)), CHAR(*(p + 6)), CHAR(*(p + 7)),
+						CHAR(*(p + 8)), CHAR(*(p + 9)), CHAR(*(p + 10)), CHAR(*(p + 11)),
+						CHAR(*(p + 12)), CHAR(*(p + 13)), CHAR(*(p + 14)), CHAR(*(p + 15)));
 				write(dbg_fd, buf, cnt);
 				/*
 				cnt = sprintf(buf, "%02x-%02x-%02x-%02x|%c%c%c%c %02x-%02x-%02x-%02x|%c%c%c%c %02x-%02x-%02x-%02x|%c%c%c%c %02x-%02x-%02x-%02x|%c%c%c%c\n",
