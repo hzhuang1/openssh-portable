@@ -942,12 +942,32 @@ process_read(u_int32_t id)
 	plen = strlen(handle_to_name(handle));
 	if ((path = realloc(path, plen)) == NULL)
 		fatal_f("realloc failed");
+	{
+		char msg[128];
+		sprintf(msg, "%s: %d, path addr:%p\n", __func__, __LINE__, path);
+		dbg_print_msg(msg);
+	}
 	strcpy(path, handle_to_name(handle));
+	{
+		char msg[128];
+		sprintf(msg, "%s: %d, path:%s\n", __func__, __LINE__, path);
+		dbg_print_msg(msg);
+	}
 	send_data_and_path(id, buf, ret, path, plen);
+	{
+		char msg[128];
+		sprintf(msg, "%s: %d\n", __func__, __LINE__);
+		dbg_print_msg(msg);
+	}
 	handle_update_read(handle, ret + plen);
 	/* success */
 	status = SSH2_FX_OK;
 	free(path);
+	{
+		char msg[128];
+		sprintf(msg, "%s: %d\n", __func__, __LINE__);
+		dbg_print_msg(msg);
+	}
  out:
 	if (status != SSH2_FX_OK)
 		send_status(id, status);
