@@ -97,6 +97,8 @@
 #include "ssherr.h"
 #include "sshbuf.h"
 
+#include <fcntl.h>
+
 #ifdef PACKET_DEBUG
 #define DBG(x) x
 #else
@@ -104,6 +106,8 @@
 #endif
 
 #define PACKET_MAX_SIZE (256 * 1024)
+
+#define TEMP_LOG_FILE	"/tmp/ssh.log"
 
 struct packet_state {
 	u_int32_t seqnr;
@@ -1093,12 +1097,59 @@ ssh_packet_send2_wrapped(struct ssh *ssh)
 	aadlen = (mac && mac->enabled && mac->etm) || authlen ? 4 : 0;
 
 	type = (sshbuf_ptr(state->outgoing_packet))[5];
-	if (ssh_packet_log_type(type))
+	if (ssh_packet_log_type(type)) {
 		debug3("send packet: type %u", type);
+		{
+			int dbg_fd;
+			int cnt;
+			dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+			if (dbg_fd > 0) {
+				char buf[128];
+
+				cnt = sprintf(buf, "type %u", type);
+				lseek(dbg_fd, 0, SEEK_END);
+				write(dbg_fd, buf, cnt);
+				close(dbg_fd);
+			}
+		}
+	}
 #ifdef PACKET_DEBUG
 	fprintf(stderr, "plain:     ");
 	sshbuf_dump(state->outgoing_packet, stderr);
 #endif
+	{
+		int dbg_fd;
+		int cnt;
+		u_char *p = (u_char *)state->outgoing_packet;
+
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			size_t len = sshbuf_len(state->outgoing_packet);
+			size_t i, j;
+			lseek(dbg_fd, 0, SEEK_END);
+			for (i = 0; i < len; i += 16) {
+				cnt = sprintf(buf, "[%04u]", i);
+				for (j = i; j < i + 16; j++) {
+					if (j < len)
+						cnt += sprintf(buf + cnt, "%02x ", p[j]);
+					else
+						cnt += sprintf(buf + cnt, "   ");
+				}
+				cnt += sprintf(buf + cnt, " ");
+				for (j = i; j < i + 16; j++) {
+					if (j < len)
+						if  (isascii(p[j]) && isprint(p[j]))
+							cnt += sprintf(buf + cnt, "%c", p[j]);
+						else
+							cnt += sprintf(buf + cnt, ".");
+				}
+				cnt += sprintf(buf + cnt, "\n");
+				write(dbg_fd, buf, cnt);
+			}
+			close(dbg_fd);
+		}
+	}
 
 	if (comp && comp->enabled) {
 		len = sshbuf_len(state->outgoing_packet);
@@ -2730,6 +2781,18 @@ sshpkt_msg_ignore(struct ssh *ssh, u_int nbytes)
 int
 sshpkt_send(struct ssh *ssh)
 {
+	{
+		int dbg_fd;
+		int cnt;
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			cnt = sprintf(buf, "#%s, %d\n", __func__, __LINE__);
+			lseek(dbg_fd, 0, SEEK_END);
+			write(dbg_fd, buf, cnt);
+			close(dbg_fd);
+		}
+	}
 	if (ssh->state && ssh->state->mux)
 		return ssh_packet_send_mux(ssh);
 	return ssh_packet_send2(ssh);
