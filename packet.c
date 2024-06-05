@@ -1307,6 +1307,21 @@ ssh_packet_send2(struct ssh *ssh)
 	u_char type;
 	int r, need_rekey;
 
+	{
+		int dbg_fd;
+		int cnt;
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			cnt = sprintf(buf, "#%s, %d, type:%u, outgoing_packet len:%d\n",
+					__func__, __LINE__,
+					sshbuf_ptr(state->outgoing_packet)[5],
+					sshbuf_len(state->outgoing_packet));
+			lseek(dbg_fd, 0, SEEK_END);
+			write(dbg_fd, buf, cnt);
+			close(dbg_fd);
+		}
+	}
 	if (sshbuf_len(state->outgoing_packet) < 6)
 		return SSH_ERR_INTERNAL_ERROR;
 	type = sshbuf_ptr(state->outgoing_packet)[5];
@@ -2781,18 +2796,6 @@ sshpkt_msg_ignore(struct ssh *ssh, u_int nbytes)
 int
 sshpkt_send(struct ssh *ssh)
 {
-	{
-		int dbg_fd;
-		int cnt;
-		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
-		if (dbg_fd > 0) {
-			char buf[128];
-			cnt = sprintf(buf, "#%s, %d\n", __func__, __LINE__);
-			lseek(dbg_fd, 0, SEEK_END);
-			write(dbg_fd, buf, cnt);
-			close(dbg_fd);
-		}
-	}
 	if (ssh->state && ssh->state->mux)
 		return ssh_packet_send_mux(ssh);
 	return ssh_packet_send2(ssh);
