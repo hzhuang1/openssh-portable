@@ -1381,6 +1381,41 @@ ssh_packet_send2(struct ssh *ssh)
 		}
 		return 0;
 	}
+	{
+		int dbg_fd;
+		int cnt;
+		u_char *p = (u_char *)state->outgoing_packet;
+
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			size_t len = sshbuf_len(state->outgoing_packet);
+			size_t i, j;
+			lseek(dbg_fd, 0, SEEK_END);
+			cnt = sprintf(buf, "#%s, %d\n", __func__, __LINE__);
+			write(dbg_fd, buf, cnt);
+			for (i = 0; i < len; i += 16) {
+				cnt = sprintf(buf, "[%04u]", i);
+				for (j = i; j < i + 16; j++) {
+					if (j < len)
+						cnt += sprintf(buf + cnt, "%02x ", p[j]);
+					else
+						cnt += sprintf(buf + cnt, "   ");
+				}
+				cnt += sprintf(buf + cnt, " ");
+				for (j = i; j < i + 16; j++) {
+					if (j < len)
+						if  (isascii(p[j]) && isprint(p[j]))
+							cnt += sprintf(buf + cnt, "%c", p[j]);
+						else
+							cnt += sprintf(buf + cnt, ".");
+				}
+				cnt += sprintf(buf + cnt, "\n");
+				write(dbg_fd, buf, cnt);
+			}
+			close(dbg_fd);
+		}
+	}
 
 	/* rekeying starts with sending KEXINIT */
 	if (type == SSH2_MSG_KEXINIT)
