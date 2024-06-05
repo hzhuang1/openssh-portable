@@ -1323,6 +1323,7 @@ ssh_packet_send2(struct ssh *ssh)
 			cnt = sprintf(buf, "#%s, outgoing_packet head %02x%02x%02x%02x\n",
 					__func__,
 					*p, *(p + 1), *(p + 2), *(p + 3));
+			write(dbg_fd, buf, cnt);
 			close(dbg_fd);
 		}
 	}
