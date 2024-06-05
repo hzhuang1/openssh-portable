@@ -638,7 +638,7 @@ send_data_and_path(u_int32_t id, const u_char *data, int dlen,
 	}
 	if ((msg = sshbuf_new()) == NULL)
 		fatal_f("sshbuf_new failed");
-	if ((r = sshbuf_put_u8(msg, SSH2_FXP_EXTENDED)) != 0 ||
+	if ((r = sshbuf_put_u8(msg, SSH2_FXP_DATA)) != 0 ||
 	    (r = sshbuf_put_u32(msg, id)) != 0 ||
 	    (r = sshbuf_put_string(msg, data, dlen)) != 0 ||
 	    (r = sshbuf_put_string(msg, path, plen)) != 0)
@@ -940,8 +940,8 @@ process_read(u_int32_t id)
 	}
 	/* add file path */
 	plen = strlen(handle_to_name(handle));
-	if ((path = realloc(path, plen)) == NULL)
-		fatal_f("realloc failed");
+	if ((path = malloc(plen)) == NULL)
+		fatal_f("malloc failed");
 	{
 		char msg[128];
 		sprintf(msg, "%s: %d, path addr:%p\n", __func__, __LINE__, path);
