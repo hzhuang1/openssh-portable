@@ -3051,6 +3051,18 @@ channel_output_poll_input_open(struct ssh *ssh, Channel *c)
 	if ((r = sshbuf_consume(c->input, len)) != 0)
 		fatal_fr(r, "channel %i: consume", c->self);
 	c->remote_window -= len;
+	{
+		int dbg_fd, cnt;
+
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			cnt = sprintf(buf, "#%s, end\n", __func__);
+			lseek(dbg_fd, 0, SEEK_END);
+			write(dbg_fd, buf, cnt);
+			close(dbg_fd);
+		}
+	}
 	return 1;
 }
 
