@@ -1313,6 +1313,8 @@ ssh_packet_send2(struct ssh *ssh)
 		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
 		if (dbg_fd > 0) {
 			char buf[128];
+			size_t len = sshbuf_len(state->outgoing_packet);
+			size_t i, j;
 			u_char *p = sshbuf_ptr(state->outgoing_packet);
 			cnt = sprintf(buf, "#%s, %d, type:%u, outgoing_packet len:%d\n",
 					__func__, __LINE__,
@@ -1324,6 +1326,25 @@ ssh_packet_send2(struct ssh *ssh)
 					__func__,
 					*p, *(p + 1), *(p + 2), *(p + 3));
 			write(dbg_fd, buf, cnt);
+			for (i = 0; i < len; i += 16) {
+				cnt = sprintf(buf, "[%04u]", i);
+				for (j = i; j < i + 16; j++) {
+					if (j < len)
+						cnt += sprintf(buf + cnt, "%02x ", p[j]);
+					else
+						cnt += sprintf(buf + cnt, "   ");
+				}
+				cnt += sprintf(buf + cnt, " ");
+				for (j = i; j < i + 16; j++) {
+					if (j < len)
+						if  (isascii(p[j]) && isprint(p[j]))
+							cnt += sprintf(buf + cnt, "%c", p[j]);
+						else
+							cnt += sprintf(buf + cnt, ".");
+				}
+				cnt += sprintf(buf + cnt, "\n");
+				write(dbg_fd, buf, cnt);
+			}
 			close(dbg_fd);
 		}
 	}
