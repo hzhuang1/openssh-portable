@@ -1106,8 +1106,25 @@ ssh_packet_send2_wrapped(struct ssh *ssh)
 			if (dbg_fd > 0) {
 				char buf[128];
 
-				cnt = sprintf(buf, "type %u", type);
+				cnt = sprintf(buf, "type %u\n", type);
 				lseek(dbg_fd, 0, SEEK_END);
+				write(dbg_fd, buf, cnt);
+				cnt = sprintf(buf, "enc:%p\n", enc);
+				write(dbg_fd, buf, cnt);
+				cnt = sprintf(buf, "mac:%p\n", mac);
+				write(dbg_fd, buf, cnt);
+				if (mac) {
+					cnt = sprintf(buf, "mac->enabled:%d, mac->etm:%d\n",
+							mac->enabled, mac->etm);
+					write(dbg_fd, buf, cnt);
+				}
+				cnt = sprintf(buf, "comp:%p\n", comp);
+				write(dbg_fd, buf, cnt);
+				if (comp) {
+					cnt = sprintf(buf, "comp->enabled:%d\n", comp->enabled);
+					write(dbg_fd, buf, cnt);
+				}
+				cnt = sprintf(buf, "state->extra_pad:%d\n", state->extra_pad);
 				write(dbg_fd, buf, cnt);
 				close(dbg_fd);
 			}
@@ -1117,39 +1134,6 @@ ssh_packet_send2_wrapped(struct ssh *ssh)
 	fprintf(stderr, "plain:     ");
 	sshbuf_dump(state->outgoing_packet, stderr);
 #endif
-	{
-		int dbg_fd;
-		int cnt;
-		u_char *p = (u_char *)state->outgoing_packet;
-
-		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
-		if (dbg_fd > 0) {
-			char buf[128];
-			size_t len = sshbuf_len(state->outgoing_packet);
-			size_t i, j;
-			lseek(dbg_fd, 0, SEEK_END);
-			for (i = 0; i < len; i += 16) {
-				cnt = sprintf(buf, "[%04u]", i);
-				for (j = i; j < i + 16; j++) {
-					if (j < len)
-						cnt += sprintf(buf + cnt, "%02x ", p[j]);
-					else
-						cnt += sprintf(buf + cnt, "   ");
-				}
-				cnt += sprintf(buf + cnt, " ");
-				for (j = i; j < i + 16; j++) {
-					if (j < len)
-						if  (isascii(p[j]) && isprint(p[j]))
-							cnt += sprintf(buf + cnt, "%c", p[j]);
-						else
-							cnt += sprintf(buf + cnt, ".");
-				}
-				cnt += sprintf(buf + cnt, "\n");
-				write(dbg_fd, buf, cnt);
-			}
-			close(dbg_fd);
-		}
-	}
 
 	if (comp && comp->enabled) {
 		len = sshbuf_len(state->outgoing_packet);
@@ -1257,6 +1241,41 @@ ssh_packet_send2_wrapped(struct ssh *ssh)
 	fprintf(stderr, "encrypted: ");
 	sshbuf_dump(state->output, stderr);
 #endif
+	{
+		int dbg_fd;
+		int cnt;
+		u_char *p = sshbuf_ptr(state->output);
+
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			size_t len = sshbuf_len(state->output);
+			size_t i, j;
+			lseek(dbg_fd, 0, SEEK_END);
+			cnt = sprintf(buf, "#%s, %d encrypted:\n", __func__, __LINE__);
+			write(dbg_fd, buf, cnt);
+			for (i = 0; i < len; i += 16) {
+				cnt = sprintf(buf, "[%04u]", i);
+				for (j = i; j < i + 16; j++) {
+					if (j < len)
+						cnt += sprintf(buf + cnt, "%02x ", p[j]);
+					else
+						cnt += sprintf(buf + cnt, "   ");
+				}
+				cnt += sprintf(buf + cnt, " ");
+				for (j = i; j < i + 16; j++) {
+					if (j < len)
+						if  (isascii(p[j]) && isprint(p[j]))
+							cnt += sprintf(buf + cnt, "%c", p[j]);
+						else
+							cnt += sprintf(buf + cnt, ".");
+				}
+				cnt += sprintf(buf + cnt, "\n");
+				write(dbg_fd, buf, cnt);
+			}
+			close(dbg_fd);
+		}
+	}
 	/* increment sequence number for outgoing packets */
 	if (++state->p_send.seqnr == 0) {
 		if ((ssh->kex->flags & KEX_INITIAL) != 0) {
@@ -1307,47 +1326,6 @@ ssh_packet_send2(struct ssh *ssh)
 	u_char type;
 	int r, need_rekey;
 
-	{
-		int dbg_fd;
-		int cnt;
-		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
-		if (dbg_fd > 0) {
-			char buf[128];
-			size_t len = sshbuf_len(state->outgoing_packet);
-			size_t i, j;
-			u_char *p = sshbuf_ptr(state->outgoing_packet);
-			cnt = sprintf(buf, "#%s, %d, type:%u, outgoing_packet len:%d\n",
-					__func__, __LINE__,
-					sshbuf_ptr(state->outgoing_packet)[5],
-					sshbuf_len(state->outgoing_packet));
-			lseek(dbg_fd, 0, SEEK_END);
-			write(dbg_fd, buf, cnt);
-			cnt = sprintf(buf, "#%s, outgoing_packet head %02x%02x%02x%02x\n",
-					__func__,
-					*p, *(p + 1), *(p + 2), *(p + 3));
-			write(dbg_fd, buf, cnt);
-			for (i = 0; i < len; i += 16) {
-				cnt = sprintf(buf, "[%04u]", i);
-				for (j = i; j < i + 16; j++) {
-					if (j < len)
-						cnt += sprintf(buf + cnt, "%02x ", p[j]);
-					else
-						cnt += sprintf(buf + cnt, "   ");
-				}
-				cnt += sprintf(buf + cnt, " ");
-				for (j = i; j < i + 16; j++) {
-					if (j < len)
-						if  (isascii(p[j]) && isprint(p[j]))
-							cnt += sprintf(buf + cnt, "%c", p[j]);
-						else
-							cnt += sprintf(buf + cnt, ".");
-				}
-				cnt += sprintf(buf + cnt, "\n");
-				write(dbg_fd, buf, cnt);
-			}
-			close(dbg_fd);
-		}
-	}
 	if (sshbuf_len(state->outgoing_packet) < 6)
 		return SSH_ERR_INTERNAL_ERROR;
 	type = sshbuf_ptr(state->outgoing_packet)[5];
@@ -1380,41 +1358,6 @@ ssh_packet_send2(struct ssh *ssh)
 			return kex_start_rekex(ssh);
 		}
 		return 0;
-	}
-	{
-		int dbg_fd;
-		int cnt;
-		u_char *p = (u_char *)state->outgoing_packet;
-
-		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
-		if (dbg_fd > 0) {
-			char buf[128];
-			size_t len = sshbuf_len(state->outgoing_packet);
-			size_t i, j;
-			lseek(dbg_fd, 0, SEEK_END);
-			cnt = sprintf(buf, "#%s, %d\n", __func__, __LINE__);
-			write(dbg_fd, buf, cnt);
-			for (i = 0; i < len; i += 16) {
-				cnt = sprintf(buf, "[%04u]", i);
-				for (j = i; j < i + 16; j++) {
-					if (j < len)
-						cnt += sprintf(buf + cnt, "%02x ", p[j]);
-					else
-						cnt += sprintf(buf + cnt, "   ");
-				}
-				cnt += sprintf(buf + cnt, " ");
-				for (j = i; j < i + 16; j++) {
-					if (j < len)
-						if  (isascii(p[j]) && isprint(p[j]))
-							cnt += sprintf(buf + cnt, "%c", p[j]);
-						else
-							cnt += sprintf(buf + cnt, ".");
-				}
-				cnt += sprintf(buf + cnt, "\n");
-				write(dbg_fd, buf, cnt);
-			}
-			close(dbg_fd);
-		}
 	}
 
 	/* rekeying starts with sending KEXINIT */
