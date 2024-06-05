@@ -1313,12 +1313,16 @@ ssh_packet_send2(struct ssh *ssh)
 		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
 		if (dbg_fd > 0) {
 			char buf[128];
+			u_char *p = sshbuf_ptr(state->outgoing_packet);
 			cnt = sprintf(buf, "#%s, %d, type:%u, outgoing_packet len:%d\n",
 					__func__, __LINE__,
 					sshbuf_ptr(state->outgoing_packet)[5],
 					sshbuf_len(state->outgoing_packet));
 			lseek(dbg_fd, 0, SEEK_END);
 			write(dbg_fd, buf, cnt);
+			cnt = sprintf(buf, "#%s, outgoing_packet head %02x%02x%02x%02x\n",
+					__func__,
+					*p, *(p + 1), *(p + 2), *(p + 3));
 			close(dbg_fd);
 		}
 	}
