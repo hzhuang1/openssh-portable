@@ -3043,6 +3043,24 @@ channel_output_poll_input_open(struct ssh *ssh, Channel *c)
 		len = c->remote_maxpacket;
 	if (len == 0)
 		return 0;
+	{
+		int dbg_fd, cnt;
+
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			u_char *p = sshbuf_ptr(c->input);
+			cnt = sprintf(buf, "#%s, len:%d\n", __func__, len);
+			lseek(dbg_fd, 0, SEEK_END);
+			write(dbg_fd, buf, cnt);
+			cnt = sprintf(buf, "type:%u, remote_id:%x, input head %02x%02x%02x%02x\n",
+				SSH2_MSG_CHANNEL_DATA, c->remote_id,
+				*p, *(p + 1), *(p + 2), *(p + 3));
+			write(dbg_fd, buf, cnt);
+
+			close(dbg_fd);
+		}
+	}
 	if ((r = sshpkt_start(ssh, SSH2_MSG_CHANNEL_DATA)) != 0 ||
 	    (r = sshpkt_put_u32(ssh, c->remote_id)) != 0 ||
 	    (r = sshpkt_put_string(ssh, sshbuf_ptr(c->input), len)) != 0 ||
