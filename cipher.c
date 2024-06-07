@@ -51,6 +51,10 @@
 
 #include "openbsd-compat/openssl-compat.h"
 
+#include <fcntl.h>
+
+#define TEMP_LOG_FILE	"/tmp/ssh.log"
+
 #ifndef WITH_OPENSSL
 #define EVP_CIPHER_CTX void
 #endif
@@ -345,6 +349,20 @@ int
 cipher_crypt(struct sshcipher_ctx *cc, u_int seqnr, u_char *dest,
    const u_char *src, u_int len, u_int aadlen, u_int authlen)
 {
+	{
+		int dbg_fd;
+		int cnt;
+
+		dbg_fd = open(TEMP_LOG_FILE, O_CREAT | O_RDWR, 0777);
+		if (dbg_fd > 0) {
+			char buf[128];
+			lseek(dbg_fd, 0, SEEK_END);
+			cnt = sprintf(buf, "#%s, %d cipher->flags:0x%x, aadlen:%d, authlen:%d\n",
+					__func__, __LINE__, cc->cipher->flags, aadlen, authlen);
+			write(dbg_fd, buf, cnt);
+			close(dbg_fd);
+		}
+	}
 	if ((cc->cipher->flags & CFLAG_CHACHAPOLY) != 0) {
 		return chachapoly_crypt(cc->cp_ctx, seqnr, dest, src,
 		    len, aadlen, authlen, cc->encrypt);
